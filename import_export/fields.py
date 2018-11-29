@@ -43,6 +43,7 @@ class Field(object):
         self.widget = widget
         self.readonly = readonly
         self.saves_null_values = saves_null_values
+        self.kwargs = None
 
     def __repr__(self):
         """
@@ -66,7 +67,8 @@ class Field(object):
                            "columns are: %s" % (self.column_name, list(data)))
 
         try:
-            value = self.widget.clean(value, row=data)
+            value = self.widget.clean(value, row=data, **self.kwargs) if self.kwargs else self.widget.clean(value,
+                                                                                                            row=data)
         except ValueError as e:
             raise ValueError("Column '%s': %s" % (self.column_name, e))
 

@@ -4,12 +4,17 @@ from __future__ import unicode_literals
 from decimal import Decimal
 from datetime import datetime, date
 from django.utils import datetime_safe, timezone, six
-from django.utils.encoding import smart_text, force_text
+from django.utils.encoding import smart_text
 from django.utils.dateparse import parse_duration
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 import json
 import ast
+
+try:
+    from django.utils.encoding import force_text
+except ImportError:
+    from django.utils.encoding import force_unicode as force_text
 
 
 class Widget(object):
@@ -20,6 +25,7 @@ class Widget(object):
     :meth:`~import_export.widgets.Widget.clean` and
     :meth:`~import_export.widgets.Widget.render`.
     """
+
     def clean(self, value, row=None, *args, **kwargs):
         """
         Returns an appropriate Python object for an imported value.
@@ -77,7 +83,10 @@ class IntegerWidget(NumberWidget):
     def clean(self, value, row=None, *args, **kwargs):
         if self.is_empty(value):
             return None
-        return int(float(value))
+        if type(value) == str and not value.isdigit() and kwargs:
+            return kwargs.get(value, 0)
+        else:
+            return int(float(value))
 
 
 class DecimalWidget(NumberWidget):
@@ -305,7 +314,7 @@ class ForeignKeyWidget(Widget):
 
         from import_export import fields, resources
         from import_export.widgets import ForeignKeyWidget
-
+        
         class BookResource(resources.ModelResource):
             author = fields.Field(
                 column_name='author',
@@ -318,6 +327,7 @@ class ForeignKeyWidget(Widget):
     :param model: The Model the ForeignKey refers to (required).
     :param field: A field on the related model used for looking up a particular object.
     """
+
     def __init__(self, model, field='pk', *args, **kwargs):
         self.model = model
         self.field = field
