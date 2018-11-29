@@ -29,11 +29,13 @@ class ModelInstanceLoader(BaseInstanceLoader):
             params = {}
             for key in self.resource.get_import_id_fields():
                 field = self.resource.fields[key]
+                field.kwargs = self.resource.kwargs.get(key, {})
                 params[field.attribute] = field.clean(row)
-            if params:
-                return self.get_queryset().get(**params)
-            else:
-                return None
+            for key in self.resource.get_need_clean_fields():
+                field = self.resource.fields[key]
+                field.kwargs = self.resource.kwargs.get(key, {})
+                params[field.attribute] = field.clean(row)
+            return self.get_queryset().get(**params)
         except self.resource._meta.model.DoesNotExist:
             return None
 
@@ -56,7 +58,7 @@ class CachedInstanceLoader(ModelInstanceLoader):
         ids = [self.pk_field.clean(row) for row in self.dataset.dict]
         qs = self.get_queryset().filter(**{
             "%s__in" % self.pk_field.attribute: ids
-            })
+        })
 
         self.all_instances = {
             self.pk_field.get_value(instance): instance

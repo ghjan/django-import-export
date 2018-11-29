@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 
 import functools
-import logging
 import tablib
 import traceback
 from collections import OrderedDict
@@ -9,6 +8,7 @@ from copy import deepcopy
 
 from diff_match_patch import diff_match_patch
 
+from django import VERSION
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management.color import no_style
@@ -18,7 +18,6 @@ from django.db.models.query import QuerySet
 from django.db.transaction import TransactionManagementError
 from django.utils import six
 from django.utils.safestring import mark_safe
-from django.utils.encoding import force_text
 
 from . import widgets
 from .fields import Field
@@ -31,13 +30,18 @@ try:
 except ImportError:
     from .django_compat import atomic, savepoint, savepoint_rollback, savepoint_commit  # noqa
 
-
 from django.db.models.fields.related import ForeignObjectRel
 
+try:
+    from django.utils.encoding import force_text
+except ImportError:
+    from django.utils.encoding import force_unicode as force_text
 
-logger = logging.getLogger(__name__)
 # Set default logging handler to avoid "No handler found" warnings.
-logger.addHandler(logging.NullHandler())
+import logging  # isort:skip
+from logging import NullHandler
+
+logging.getLogger(__name__).addHandler(NullHandler())
 
 USE_TRANSACTIONS = getattr(settings, 'IMPORT_EXPORT_USE_TRANSACTIONS', True)
 
@@ -481,7 +485,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
             # There is no point logging a transaction error for each row
             # when only the original error is likely to be relevant
             if not isinstance(e, TransactionManagementError):
-                logger.debug(e, exc_info=e)
+                logging.exception(e)
             tb_info = traceback.format_exc()
             row_result.errors.append(self.get_error_result_class()(e, tb_info, row))
         return row_result
@@ -519,7 +523,8 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
         using_transactions = (use_transactions or dry_run) and supports_transactions
 
         with atomic_if_using_transaction(using_transactions):
-            return self.import_data_inner(dataset, dry_run, raise_errors, using_transactions, collect_failed_rows, **kwargs)
+            return self.import_data_inner(dataset, dry_run, raise_errors, using_transactions, collect_failed_rows,
+                                          **kwargs)
 
     def import_data_inner(self, dataset, dry_run, raise_errors, using_transactions, collect_failed_rows, **kwargs):
         result = self.get_result_class()()
@@ -535,7 +540,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
             with atomic_if_using_transaction(using_transactions):
                 self.before_import(dataset, using_transactions, dry_run, **kwargs)
         except Exception as e:
-            logger.debug(e, exc_info=e)
+            logging.exception(e)
             tb_info = traceback.format_exc()
             result.append_base_error(self.get_error_result_class()(e, tb_info))
             if raise_errors:
@@ -572,7 +577,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
             with atomic_if_using_transaction(using_transactions):
                 self.after_import(dataset, result, using_transactions, dry_run, **kwargs)
         except Exception as e:
-            logger.debug(e, exc_info=e)
+            logging.exception(e)
             tb_info = traceback.format_exc()
             result.append_base_error(self.get_error_result_class()(e, tb_info))
             if raise_errors:
@@ -675,7 +680,7 @@ class ModelDeclarativeMetaclass(DeclarativeMetaclass):
 
                 field = new_class.field_from_django_field(f.name, f,
                                                           readonly=False)
-                field_list.append((f.name, field, ))
+                field_list.append((f.name, field,))
 
             new_class.fields.update(OrderedDict(field_list))
 
@@ -691,12 +696,12 @@ class ModelDeclarativeMetaclass(DeclarativeMetaclass):
                     model = opts.model
                     attrs = field_name.split('__')
                     for i, attr in enumerate(attrs):
-                        verbose_path = ".".join([opts.model.__name__] + attrs[0:i+1])
+                        verbose_path = ".".join([opts.model.__name__] + attrs[0:i + 1])
 
                         try:
                             f = model._meta.get_field(attr)
                         except FieldDoesNotExist as e:
-                            logger.debug(e, exc_info=e)
+                            logging.exception(e)
                             raise FieldDoesNotExist(
                                 "%s: %s has no field named '%s'" %
                                 (verbose_path, model.__name__, attr))
@@ -813,7 +818,7 @@ class ModelResource(six.with_metaclass(ModelDeclarativeMetaclass, Resource)):
         widget_kwargs = cls.widget_kwargs_for_field(field_name)
         field = cls.DEFAULT_RESOURCE_FIELD(
             attribute=field_name,
-            column_name=field_name,
+            column_name=django_field.verbose_name,
             widget=FieldWidget(**widget_kwargs),
             readonly=readonly,
             default=django_field.default,
@@ -824,6 +829,11 @@ class ModelResource(six.with_metaclass(ModelDeclarativeMetaclass, Resource)):
         """
         """
         return self._meta.import_id_fields
+
+    def get_need_clean_fields(self):
+        """
+        """
+        return self._meta.need_clean_fields
 
     def get_queryset(self):
         """

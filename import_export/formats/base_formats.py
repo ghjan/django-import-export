@@ -4,7 +4,6 @@ from django.utils.six import moves
 import sys
 import warnings
 import tablib
-from importlib import import_module
 
 try:
     from tablib.compat import xlrd
@@ -21,19 +20,25 @@ except ImportError:
         warnings.warn(xls_warning, ImportWarning)
         XLS_IMPORT = False
 
-
 try:
     import openpyxl
+
     XLSX_IMPORT = True
 except ImportError:
     try:
         from tablib.compat import openpyxl
+
         XLSX_IMPORT = hasattr(openpyxl, 'load_workbook')
     except ImportError:
         xlsx_warning = "Installed `tablib` library does not include"
         "import support for 'xlsx' format and openpyxl module is not found."
         warnings.warn(xlsx_warning, ImportWarning)
         XLSX_IMPORT = False
+
+try:
+    from importlib import import_module
+except ImportError:
+    from django.utils.importlib import import_module
 
 
 class Format(object):
@@ -72,7 +77,7 @@ class Format(object):
 
     def get_content_type(self):
         # For content types see
-        # https://www.iana.org/assignments/media-types/media-types.xhtml
+        # http://www.iana.org/assignments/media-types/media-types.xhtml
         return 'application/octet-stream'
 
     def can_import(self):
@@ -151,7 +156,7 @@ class JSON(TextFormat):
 
 class YAML(TextFormat):
     TABLIB_MODULE = 'tablib.formats._yaml'
-    # See https://stackoverflow.com/questions/332129/yaml-mime-type
+    # See http://stackoverflow.com/questions/332129/yaml-mime-type
     CONTENT_TYPE = 'text/yaml'
 
 
@@ -211,7 +216,7 @@ class XLSX(TablibFormat):
         """
         assert XLSX_IMPORT
         from io import BytesIO
-        xlsx_book = openpyxl.load_workbook(BytesIO(in_stream), read_only=True)
+        xlsx_book = openpyxl.load_workbook(BytesIO(in_stream), read_only=True, data_only=True)
 
         dataset = tablib.Dataset()
         sheet = xlsx_book.active
@@ -224,6 +229,7 @@ class XLSX(TablibFormat):
             row_values = [cell.value for cell in row]
             dataset.append(row_values)
         return dataset
+
 
 #: These are the default formats for import and export. Whether they can be
 #: used or not is depending on their implementation in the tablib library.
